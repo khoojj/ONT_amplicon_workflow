@@ -81,10 +81,5 @@ nextflow run main.nf -profile conda \
 ```
 
 ## Author and Citation
-
-Author: **Jing Jing Khoo**
-
-If you use this workflow in your work, please cite this repository.  
-If/when a publication becomes available, include the DOI here:
-
-- Publication DOI: **TBD**
+2026 Jing Jing Khoo
+If you use this workflow or derivatives of it in academic work, please cite this repository and the original NanoCLUST publication. A CITATION.cff file is provided for convenience.
