@@ -1,0 +1,7 @@
+name: vsearch_chimera
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - vsearch=2.27.0

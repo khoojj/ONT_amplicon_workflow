@@ -1,0 +1,10 @@
+name: otu_ete3
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10
+  - pandas
+  - openpyxl
+  - ete3

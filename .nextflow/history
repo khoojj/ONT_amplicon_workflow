@@ -1,0 +1,21 @@
+2023-09-01 11:30:59	4.9s	intergalactic_moriondo	ERR	2a51687d92a6d4d9b930ed2691895127	62157648-fffd-4b7e-8174-5e0e68fee296	nextflow run main.nf -profile test,conda
+2023-09-01 11:32:28	-	spontaneous_visvesvaraya	-	2a51687d92a6d4d9b930ed2691895127	a86c2dc1-a017-48b0-93b8-873cc44a8277	nextflow run main.nf -profile test,conda
+2023-09-01 11:33:00	-	ecstatic_plateau	-	2a51687d92a6d4d9b930ed2691895127	d3a7bbc6-2411-4a3a-b773-0ce1a5bafafd	nextflow run main.nf -profile test,conda
+2023-09-01 11:33:18	3.4s	goofy_jones	ERR	2a51687d92a6d4d9b930ed2691895127	39cbdc5c-cd1c-47c9-960a-8ac04feae683	nextflow run main.nf -profile test,conda
+2023-09-01 11:37:31	-	kickass_jepsen	-	2a51687d92a6d4d9b930ed2691895127	d7257351-b055-4776-82f2-b8ab4da6640a	nextflow run main.nf -profile test,conda
+2023-09-01 11:37:42	4.2s	wise_mccarthy	ERR	2a51687d92a6d4d9b930ed2691895127	e583dfdc-25f9-479c-87bb-cc5b689ef06d	nextflow run main.nf -profile test,conda
+2023-09-01 11:42:47	3.5s	crazy_brahmagupta	ERR	2a51687d92a6d4d9b930ed2691895127	6964aade-3f01-40c5-b68a-0c1db6009cf8	nextflow run main.nf -profile test,conda
+2023-09-01 11:45:39	4.1s	scruffy_lavoisier	ERR	2a51687d92a6d4d9b930ed2691895127	a428f0f0-b05e-4589-981e-296eeaec83d5	nextflow run main.nf -profile test,conda
+2023-09-01 11:46:12	3.7s	nasty_carson	ERR	2a51687d92a6d4d9b930ed2691895127	469bc7c7-61bb-461f-abe6-05ef7c513c21	nextflow run main.nf -profile test,conda
+2023-09-01 11:46:52	4.3s	prickly_galileo	ERR	2a51687d92a6d4d9b930ed2691895127	2fdc20e1-4bba-4714-8849-86586a91915a	nextflow run main.nf -profile test,conda
+2023-09-01 11:47:47	4.6s	dreamy_plateau	ERR	2a51687d92a6d4d9b930ed2691895127	82cee660-14ec-4b1a-b05b-64bb75480096	nextflow run main.nf -profile test,conda
+2023-09-01 11:48:26	7.3s	wise_sanger	ERR	2a51687d92a6d4d9b930ed2691895127	3a9513e7-2c71-4df9-b906-b0b48cac2bf1	nextflow run main.nf -profile test,conda
+2023-09-01 11:56:57	3.9s	nasty_cray	ERR	2a51687d92a6d4d9b930ed2691895127	4f13f7ad-b85a-4d7f-8deb-7ca7e1fbc19c	nextflow run main.nf -profile test,conda
+2023-09-01 11:57:16	-	nostalgic_swartz	-	2a51687d92a6d4d9b930ed2691895127	acf7d6b1-9ba2-4d7e-903a-152f5ae70b2e	nextflow run main.nf -profile test,conda
+2023-09-01 11:59:56	3.5s	adoring_solvay	ERR	2a51687d92a6d4d9b930ed2691895127	4ed29806-5c56-44d1-abed-47d7e8bb1921	nextflow run main.nf -profile test,conda
+2023-09-01 12:00:18	3.8s	nauseous_ritchie	ERR	2a51687d92a6d4d9b930ed2691895127	5e005298-c0bd-4777-8a9f-44e881f35afd	nextflow run main.nf -profile test,conda
+2023-09-01 12:07:35	16.5s	trusting_descartes	ERR	2a51687d92a6d4d9b930ed2691895127	23c3740f-0393-40c5-90ba-0f1dfe338127	nextflow run main.nf -profile test,conda
+2023-09-01 12:37:07	-	hungry_legentil	-	2a51687d92a6d4d9b930ed2691895127	877b0375-caf7-4a43-9e57-87fb94e5d59a	nextflow run main.nf -profile test,conda
+2023-09-01 12:37:21	48.6s	kickass_meitner	ERR	2a51687d92a6d4d9b930ed2691895127	db20cd87-f7c2-4527-8e68-8d193c74967c	nextflow run main.nf -profile test,conda
+2023-09-01 12:41:11	1m 47s	backstabbing_hypatia	ERR	31d947054504a39ab8a7a4d85209d640	c674c622-c427-48a9-a869-9b3259724b14	nextflow run main.nf -profile test,conda
+2023-09-01 12:44:29	1m 33s	curious_bartik	OK	31d947054504a39ab8a7a4d85209d640	d9d661f1-f006-4877-816c-bfd385a2b05e	nextflow run main.nf -profile test,conda

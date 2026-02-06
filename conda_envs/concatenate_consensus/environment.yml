@@ -1,0 +1,7 @@
+name: concat_consensus
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - openpyxl
