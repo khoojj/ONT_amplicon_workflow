@@ -331,22 +331,22 @@ process split_by_cluster {
     # so this step would otherwise produce no *.log/*.fastq files and Nextflow would fail.
     # To keep the workflow running, we emit a dummy cluster "0" with 0 reads (0.log + 0.fastq).
 
-    sed 's/\\srunid.*//g' $reads > only_id_header_readfile.fastq
+    sed 's/[[:space:]]runid.*//g' "$reads" > only_id_header_readfile.fastq
 
-    # Collect all non-noise cluster IDs (>=0). These are the valid clusters.
-    CLUSTERS=\$(awk '\$5 >= 0 {print \$5}' $clusters | sort -n | uniq)
+    # Collect all non-noise cluster IDs (>=0), skip header, only numeric.
+    CLUSTERS=\$(awk 'NR>1 && \$5 ~ /^[0-9]+\$/ {print \$5}' "${clusters}" | sort -n | uniq)
 
     if [ -z "\$CLUSTERS" ]; then
-        echo "[split_by_cluster] No clusters detected for sample ${barcode} (all reads labelled as noise: bin_id=-1)." >&2
-        echo -n "0;0" > 0.log
-        : > 0.fastq
+      echo "[split_by_cluster] No clusters detected for sample ${barcode} (all reads labelled as noise: bin_id=-1)." >&2
+      echo -n "0;0" > 0.log
+      : > 0.fastq
     else
-        for cluster_id in \$CLUSTERS; do
-            awk -v cluster="\$cluster_id" '(\$5 == cluster) {print \$1}' $clusters > \${cluster_id}_ids.txt
-            seqtk subseq only_id_header_readfile.fastq \${cluster_id}_ids.txt > \${cluster_id}.fastq
-            READ_COUNT=\$(( \$(wc -l < \${cluster_id}.fastq) / 4 ))
-            echo -n "\${cluster_id};\${READ_COUNT}" > \${cluster_id}.log
-        done
+      for cluster_id in \$CLUSTERS; do
+        awk -v cluster="\$cluster_id" '(\$5 == cluster) {print \$1}' "${clusters}" > "\${cluster_id}_ids.txt"
+        seqtk subseq only_id_header_readfile.fastq "\${cluster_id}_ids.txt" > "\${cluster_id}.fastq"
+        READ_COUNT=\$(( \$(wc -l < "\${cluster_id}.fastq") / 4 ))
+        echo -n "\${cluster_id};\${READ_COUNT}" > "\${cluster_id}.log"
+      done
     fi
     """
 }
