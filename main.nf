@@ -240,7 +240,7 @@ process get_software_versions {
 
 process cutadapt_trim {
   tag { reads.name }
-  cpus { params.cutadapt_cpus ?: 32 }
+
 
   // publish trimmed fastq into results
   publishDir "${params.outdir}/trimmed", mode: 'copy', pattern: '*.trimmed.fq'
@@ -287,7 +287,7 @@ process kmer_freqs {
 
   script:
     """
-    kmer_freq.py -r $reads > kmer_freqs.txt
+    kmer_freq.py -r $reads -t ${task.cpus} > kmer_freqs.txt
     """
 }
 
@@ -318,7 +318,10 @@ process split_by_cluster {
     tuple val(barcode), path(clusters), path(reads)
 
   output:
-    tuple val(barcode), path("*[0-9]*.log"), path("*[0-9]*.fastq"), emit: cluster_reads
+    tuple val(barcode),
+          path("*[0-9]*.log",   optional: true),
+          path("*[0-9]*.fastq", optional: true),
+          emit: cluster_reads
 
   script:
     """
@@ -367,7 +370,7 @@ process read_correction {
     cluster_id = cluster_log.baseName
     """
     head -n\$(( $count*4 )) $reads > subset.fastq
-    canu -correct -p corrected_reads -nanopore-raw subset.fastq genomeSize=${params.avg_amplicon_size} stopOnLowCoverage=1 minInputCoverage=2 minReadLength=500 minOverlapLength=200 useGrid=False
+    canu -correct -p corrected_reads -nanopore-raw subset.fastq maxThreads=${task.cpus} genomeSize=${params.avg_amplicon_size} stopOnLowCoverage=1 minInputCoverage=2 minReadLength=500 minOverlapLength=200 useGrid=False
     gunzip corrected_reads.correctedReads.fasta.gz
     READ_COUNT=\$(( \$(awk '{print \$1/2}' <(wc -l corrected_reads.correctedReads.fasta)) ))
     cat $cluster_log > ${cluster_id}_racon.log
@@ -391,7 +394,7 @@ process draft_selection {
     split -l 2 $reads split_reads
     find split_reads* > read_list.txt
 
-    fastANI --ql read_list.txt --rl read_list.txt -o fastani_output.ani -t 48 -k 16 --fragLen 160
+    fastANI --ql read_list.txt --rl read_list.txt -o fastani_output.ani -t ${task.cpus} -k 16 --fragLen 160
 
     DRAFT=\$(awk 'NR>1{name[\$1] = \$1; arr[\$1] += \$3; count[\$1] += 1}  END{for (a in arr) {print arr[a] / count[a], name[a] }}' fastani_output.ani | sort -rg | cut -d " " -f2 | head -n1)
     cat \$DRAFT > draft_read.fasta
@@ -412,8 +415,8 @@ process racon_pass {
   script:
     """
     export success=1
-    minimap2 -ax map-ont --no-long-join -r100 -a $draft_read $corrected_reads -o aligned.sam
-    if racon --quality-threshold=9 -w 250 $corrected_reads aligned.sam $draft_read > racon_consensus.fasta ; then
+    minimap2 -t ${task.cpus} -ax map-ont --no-long-join -r100 -a $draft_read $corrected_reads -o aligned.sam
+    if racon -t ${task.cpus} --quality-threshold=9 -w 250 $corrected_reads aligned.sam $draft_read > racon_consensus.fasta ; then
         export success=1
     else
         export success=0
@@ -443,7 +446,7 @@ process medaka_pass {
       racon_warnings.add("""Sample $barcode : Racon correction for cluster $cluster_id failed due to not enough overlaps. Taking draft read as consensus""")
     }
     """
-    if medaka_consensus -i $corrected_reads -d $draft -o consensus_medaka.fasta -t 4 -m r1041_e82_400bps_hac_v4.2.0 ; then
+    if medaka_consensus -i $corrected_reads -d $draft -o consensus_medaka.fasta -t ${task.cpus} -m r1041_e82_400bps_hac_v4.2.0 ; then
         echo "Command succeeded"
     else
         mkdir -p consensus_medaka.fasta
@@ -493,7 +496,7 @@ process consensus_classification {
     taxdb = params.tax
     """
     export BLASTDB="\${BLASTDB:+\$BLASTDB:}$taxdb"
-    blastn -query $consensus -db $db -task blastn -dust no -outfmt  "10 sscinames staxids sacc evalue length qcovs pident" -evalue 1e-20 -max_hsps 50 -max_target_seqs 50 | sed 's/;/_/g' | sed 's/,/;/g' | sed 's/_/,/g'  > consensus_classification.csv
+    blastn -query $consensus -db $db -task blastn -num_threads ${task.cpus} -dust no -outfmt  "10 sscinames staxids sacc evalue length qcovs pident" -evalue 1e-20 -max_hsps 50 -max_target_seqs 50 | sed 's/;/_/g' | sed 's/,/;/g' | sed 's/_/,/g'  > consensus_classification.csv
     cat $cluster_log > ${cluster_id}_blast.log
     echo -n ";" >> ${cluster_id}_blast.log
     BLAST_OUT=\$(cut -d";" -f1,2,3,4,5,6,7 consensus_classification.csv | head -n1)

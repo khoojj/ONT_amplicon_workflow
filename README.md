@@ -39,7 +39,8 @@ Compared to the original NanoCLUST workflow, this pipeline includes the followin
 - Local or HPC execution supported
 - Local NCBI BLAST database and BLAST taxonomy (**`taxdb`**) files
 
-## Usage
+### Installation
+Refer to INSTALL.md
 
 ### Basic run (Conda profile)
 Reads file are named barcode**.fq.gz (ie. barcode06.fq.gz)
@@ -80,6 +81,26 @@ nextflow run main.nf -profile conda \
   --polishing_reads 300
 ```
 
+### Running the Pipeline at Scale
+For large datasets (e.g., >50 samples), the Nextflow manager requires additional memory to track parallel tasks. It is highly recommended to set the Java Virtual Machine (JVM) overhead before launching the pipeline:
+
+```bash
+# Allow the Nextflow controller to use up to 8GB of RAM
+export NXF_OPTS="-Xms2g -Xmx8g"
+
+# Run the pipeline
+nextflow run main.nf -profile conda \
+  --reads "*.fq.gz" \
+  --db /path/to/blast_db/nt \
+  --tax /path/to/blastdb_taxonomy_dir \
+  --outdir results
+```
+
 ## Author and Citation
-2026 Jing Jing Khoo
-If you use this workflow or derivatives of it in academic work, please cite this repository and the original NanoCLUST publication. A CITATION.cff file is provided for convenience.
+
+Author: **Jing Jing Khoo**
+
+If you use this workflow in your work, please cite this repository.  
+If/when a publication becomes available, include the DOI here:
+
+- Publication DOI: **TBD**

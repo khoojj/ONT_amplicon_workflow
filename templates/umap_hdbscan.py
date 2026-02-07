@@ -2,25 +2,39 @@
 
 import numpy as np
 import umap
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn import decomposition
 import random
 import pandas as pd
 import hdbscan
+import os
 
+# Get the number of CPUs allocated by Nextflow, default to 1 if not found
+task_cpus = int(os.environ.get('NUMBA_NUM_THREADS', 1))
 df = pd.read_csv("$freqs", delimiter="\t")
 
 #UMAP
 motifs = [x for x in df.columns.values if x not in ["read", "length"]]
 X = df.loc[:,motifs]
-X_embedded = umap.UMAP(n_neighbors=15, min_dist=0.1, verbose=2).fit_transform(X)
+X_embedded = umap.UMAP(
+    n_neighbors=15, 
+    min_dist=0.1, 
+    verbose=2,
+    n_jobs=task_cpus
+    ).fit_transform(X)
 
 df_umap = pd.DataFrame(X_embedded, columns=["D1", "D2"])
 umap_out = pd.concat([df["read"], df["length"], df_umap], axis=1)
 
 #HDBSCAN
 X = umap_out.loc[:,["D1", "D2"]]
-umap_out["bin_id"] = hdbscan.HDBSCAN(min_cluster_size=int($params.min_cluster_size), cluster_selection_epsilon=float($params.cluster_sel_epsilon)).fit_predict(X)
+umap_out["bin_id"] = hdbscan.HDBSCAN(
+    min_cluster_size=int($params.min_cluster_size), 
+    cluster_selection_epsilon=float($params.cluster_sel_epsilon),
+    core_dist_n_jobs=task_cpus 
+    ).fit_predict(X)
 
 #PLOT
 plt.figure(figsize=(20,20))
