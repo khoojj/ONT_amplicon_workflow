@@ -319,8 +319,8 @@ process split_by_cluster {
 
   output:
     tuple val(barcode),
-          path("*[0-9]*.log",   optional: true),
-          path("*[0-9]*.fastq", optional: true),
+          path("*.log",   optional: true),
+          path("*.fastq", optional: true),
           emit: cluster_reads
 
   script:
@@ -351,8 +351,6 @@ process split_by_cluster {
     """
 }
 
-
-
 process read_correction {
   memory { 7.GB * task.attempt }
   time { 48.hour * task.attempt }
@@ -360,7 +358,9 @@ process read_correction {
   maxRetries 3
 
   input:
-    tuple val(barcode), path(cluster_log), path(reads)
+    tuple val(barcode),
+          path(cluster_log, stageAs: 'cluster.log'),
+          path(reads,       stageAs: 'cluster.fastq')
 
   output:
     tuple val(barcode), val(cluster_id), path("*_racon_.log"), path("corrected_reads.correctedReads.fasta"), emit: corrected_reads
@@ -369,14 +369,18 @@ process read_correction {
     count = params.polishing_reads
     cluster_id = cluster_log.baseName
     """
-    head -n\$(( $count*4 )) $reads > subset.fastq
+    head -n\$(( $count*4 )) cluster.fastq > subset.fastq
     canu -correct -p corrected_reads -nanopore-raw subset.fastq maxThreads=${task.cpus} genomeSize=${params.avg_amplicon_size} stopOnLowCoverage=1 minInputCoverage=2 minReadLength=500 minOverlapLength=200 useGrid=False
     gunzip corrected_reads.correctedReads.fasta.gz
-    READ_COUNT=\$(( \$(awk '{print \$1/2}' <(wc -l corrected_reads.correctedReads.fasta)) ))
-    cat $cluster_log > ${cluster_id}_racon.log
+
+    # FASTA count (robust even if sequences are wrapped)
+    READ_COUNT=\$(grep -c '^>' corrected_reads.correctedReads.fasta)
+
+    cat cluster.log > ${cluster_id}_racon.log
     echo -n ";$count;\$READ_COUNT;" >> ${cluster_id}_racon.log && cp ${cluster_id}_racon.log ${cluster_id}_racon_.log
     """
 }
+
 
 
 process draft_selection {
