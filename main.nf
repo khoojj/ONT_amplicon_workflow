@@ -29,7 +29,7 @@ def helpMessage() {
 
     Usage:
 
-    The typical command for running the pipeline is as follows:
+    The typical command for running the pipeline is as follows (default in parentheses):
 
     nextflow run nf-core/nanoclust --reads 'reads.fastq' --db "path/to/db" --tax "path/to/taxdb" -profile conda
 
@@ -54,6 +54,7 @@ def helpMessage() {
       --polishing_reads             Number of reads used for polishing (100)
       --db                          Path to local BLAST database. If not specified, search will be done againts NCBI 16S Microbial
       --tax                         Path to taxdb database which contains the names for the --db entries
+      --blast_task                  Task for blast (blastn)
       --outdir                      The output directory where the results will be saved
       -name                         Name for the pipeline run. If not specified, Nextflow will automatically generate a random mnemonic.
     """.stripIndent()
@@ -93,16 +94,23 @@ t = cutadapt_trim(reads_ch)
   c = read_clustering(k.freqs, k.freqs_qc_results)
 // Split the cluster into separate work directories
   s = split_by_cluster(c.clustering_out)
+
 // expand to (barcode, log, fastq) per cluster id
 cluster_reads_per_cluster = s.cluster_reads.flatMap { barcode, logs, fastqs ->
-    def logMap = logs.collectEntries { [(it.baseName): it] }   // "0" -> 0.log, etc.
-    fastqs.collect { fq ->
-        def cid = fq.baseName          // "0" from "0.fastq"
-        tuple(barcode, logMap[cid], fq)
-    }.findAll { it[1] != null }        // drop if no matching log
+  def logMap = logs.collectEntries { [(it.baseName): it] }
+  fastqs.collect { fq ->
+    def cid = fq.baseName
+    tuple(barcode, cid, logMap[cid], fq)
+  }.findAll { it[2] != null }
 }
-// Reads correction
-  corr = read_correction(cluster_reads_per_cluster)
+.filter { barcode, cid, lg, fq -> fq.isFile() && fq.size() > 0 }
+
+// bundle (barcode, cid, bundle_dir)
+bc = bundle_cluster_inputs(cluster_reads_per_cluster)
+
+// Reads correction (all clusters, including dummy 0.fastq)
+corr = read_correction(bc.bundled)
+
 // Select a draft for polishing
   d = draft_selection(corr.corrected_reads)
 // Polishing
@@ -280,16 +288,20 @@ process cutadapt_trim {
 process kmer_freqs {
   input:
     path reads
-
+  
   output:
     path "kmer_freqs.txt", emit: freqs
-    tuple val(reads.baseName), path(reads), emit: freqs_qc_results
+    tuple val(barcode), path(reads), emit: freqs_qc_results
+
+
 
   script:
+    barcode = reads.baseName.replaceFirst(/\.trimmed$/, '')
     """
     kmer_freq.py -r $reads -t ${task.cpus} > kmer_freqs.txt
     """
 }
+
 
 
 process read_clustering {
@@ -311,45 +323,54 @@ process read_clustering {
     template "umap_hdbscan.py"
 }
 
-
-//updated to handle samples with low number of reads - ie. negative controls
+//Updated to handle negative samples or low read samples
 process split_by_cluster {
   input:
     tuple val(barcode), path(clusters), path(reads)
 
   output:
     tuple val(barcode),
-          path("*.log",   optional: true),
-          path("*.fastq", optional: true),
-          emit: cluster_reads
+        path("[0-9]*.log"),
+        path("[0-9]*.fastq"),
+        emit: cluster_reads
 
   script:
     """
-    # The HDBSCAN output table has the cluster assignment in column 5 ("bin_id").
-    # HDBSCAN labels noise / unclustered reads as -1.
-    # If all reads are labelled -1, then there are *no* valid clusters (0,1,2,...),
-    # so this step would otherwise produce no *.log/*.fastq files and Nextflow would fail.
-    # To keep the workflow running, we emit a dummy cluster "0" with 0 reads (0.log + 0.fastq).
+    sed 's/\\srunid.*//g' $reads > only_id_header_readfile.fastq
 
-    sed 's/[[:space:]]runid.*//g' "$reads" > only_id_header_readfile.fastq
-
-    # Collect all non-noise cluster IDs (>=0), skip header, only numeric.
-    CLUSTERS=\$(awk 'NR>1 && \$5 ~ /^[0-9]+\$/ {print \$5}' "${clusters}" | sort -n | uniq)
-
-    if [ -z "\$CLUSTERS" ]; then
-      echo "[split_by_cluster] No clusters detected for sample ${barcode} (all reads labelled as noise: bin_id=-1)." >&2
-      echo -n "0;0" > 0.log
-      : > 0.fastq
-    else
-      for cluster_id in \$CLUSTERS; do
-        awk -v cluster="\$cluster_id" '(\$5 == cluster) {print \$1}' "${clusters}" > "\${cluster_id}_ids.txt"
-        seqtk subseq only_id_header_readfile.fastq "\${cluster_id}_ids.txt" > "\${cluster_id}.fastq"
-        READ_COUNT=\$(( \$(wc -l < "\${cluster_id}.fastq") / 4 ))
-        echo -n "\${cluster_id};\${READ_COUNT}" > "\${cluster_id}.log"
-      done
+    # Max cluster id among valid clusters (>=0). If none, default to 0.
+    CLUSTERS_CNT=\$(awk 'NR>1 && \$5 >= 0 {print \$5}' $clusters | sort -n | tail -n1)
+    if [ -z "\$CLUSTERS_CNT" ]; then
+      CLUSTERS_CNT=0
     fi
+
+    for ((i = 0 ; i <= \$CLUSTERS_CNT ; i++)); do
+      cluster_id=\$i
+      awk -v cluster="\$cluster_id" '(\$5 == cluster) {print \$1}' $clusters > "\${cluster_id}_ids.txt"
+      seqtk subseq only_id_header_readfile.fastq "\${cluster_id}_ids.txt" > "\${cluster_id}.fastq"
+      READ_COUNT=\$(( \$(wc -l < "\${cluster_id}.fastq") / 4 ))
+      echo "\${cluster_id};\${READ_COUNT}" > "\${cluster_id}.log"
+    done
     """
 }
+
+process bundle_cluster_inputs {
+  tag { "${barcode}:c${cluster_id}" }
+
+  input:
+    tuple val(barcode), val(cluster_id), path(cluster_log), path(cluster_fastq)
+
+  output:
+    tuple val(barcode), val(cluster_id), path("bundle"), emit: bundled
+
+  script:
+    """
+    mkdir -p bundle
+    cp "$cluster_log" bundle/
+    cp "$cluster_fastq" bundle/
+    """
+}
+
 
 process read_correction {
   memory { 7.GB * task.attempt }
@@ -358,33 +379,54 @@ process read_correction {
   maxRetries 3
 
   input:
-    tuple val(barcode),
-          path(cluster_log, stageAs: 'cluster.log'),
-          path(reads,       stageAs: 'cluster.fastq')
+    tuple val(barcode), val(cluster_id), path(bundle_dir)
 
   output:
-    tuple val(barcode), val(cluster_id), path("*_racon_.log"), path("corrected_reads.correctedReads.fasta"), emit: corrected_reads
+    tuple val(barcode), val(cluster_id),
+          path('*_racon_.log'),
+          path('corrected_reads.correctedReads.fasta'), emit: corrected_reads
 
   script:
-    count = params.polishing_reads
-    cluster_id = cluster_log.baseName
-    """
-    head -n\$(( $count*4 )) cluster.fastq > subset.fastq
-    canu -correct -p corrected_reads -nanopore-raw subset.fastq maxThreads=${task.cpus} genomeSize=${params.avg_amplicon_size} stopOnLowCoverage=1 minInputCoverage=2 minReadLength=500 minOverlapLength=200 useGrid=False
-    gunzip corrected_reads.correctedReads.fasta.gz
+    def count = params.polishing_reads
 
-    # FASTA count (robust even if sequences are wrapped)
+    """
+    cluster_log=\$(ls "$bundle_dir"/*.log)
+    reads=\$(ls "$bundle_dir"/*.fastq)
+
+    if [ \$(wc -l < "\$reads") -lt 4 ]; then
+      : > corrected_reads.correctedReads.fasta
+      READS_IN_CLUSTER=\$(cut -d';' -f2 "\$cluster_log")
+      echo "${cluster_id};\$READS_IN_CLUSTER;${count};0" > ${cluster_id}_racon.log
+      cp ${cluster_id}_racon.log ${cluster_id}_racon_.log
+      exit 0
+    fi
+
+    nlines=\$(expr ${count} \\* 4)
+    head -n "\$nlines" "\$reads" > subset.fastq
+
+    if canu -correct -p corrected_reads -nanopore-raw subset.fastq \
+        genomeSize=${params.avg_amplicon_size} \
+        stopOnLowCoverage=1 minInputCoverage=2 \
+        maxThreads=${task.cpus} \
+        minReadLength=500 minOverlapLength=200 useGrid=False
+    then
+      gunzip -f corrected_reads.correctedReads.fasta.gz
+    else
+      : > corrected_reads.correctedReads.fasta
+    fi
+
     READ_COUNT=\$(grep -c '^>' corrected_reads.correctedReads.fasta)
 
-    cat cluster.log > ${cluster_id}_racon.log
-    echo -n ";$count;\$READ_COUNT;" >> ${cluster_id}_racon.log && cp ${cluster_id}_racon.log ${cluster_id}_racon_.log
+    READS_IN_CLUSTER=\$(cut -d';' -f2 "\$cluster_log")
+    echo "${cluster_id};\$READS_IN_CLUSTER;${count};\$READ_COUNT" > ${cluster_id}_racon.log
+    cp ${cluster_id}_racon.log ${cluster_id}_racon_.log
     """
 }
 
 
 
 process draft_selection {
-  publishDir "${params.outdir}/${barcode}/cluster${cluster_id}", mode: 'copy', pattern: 'draft_read.fasta'
+  publishDir { "${params.outdir}/${barcode}/cluster${cluster_id}" }, mode: 'copy', pattern: 'draft_read.fasta' 
   errorStrategy 'retry'
 
   input:
@@ -393,21 +435,24 @@ process draft_selection {
   output:
     tuple val(barcode), val(cluster_id), path("*_draft.log"), path("draft_read.fasta"), path(reads), emit: draft
 
-  script:
-    """
-    split -l 2 $reads split_reads
-    find split_reads* > read_list.txt
+script:
+  """
+  split -l 2 "${reads}" split_reads
+  find split_reads* > read_list.txt
 
-    fastANI --ql read_list.txt --rl read_list.txt -o fastani_output.ani -t ${task.cpus} -k 16 --fragLen 160
+  fastANI --ql read_list.txt --rl read_list.txt -o fastani_output.ani -t ${task.cpus} -k 16 --fragLen 160
 
-    DRAFT=\$(awk 'NR>1{name[\$1] = \$1; arr[\$1] += \$3; count[\$1] += 1}  END{for (a in arr) {print arr[a] / count[a], name[a] }}' fastani_output.ani | sort -rg | cut -d " " -f2 | head -n1)
-    cat \$DRAFT > draft_read.fasta
-    ID=\$(head -n1 draft_read.fasta | sed 's/>//g')
-    cat $cluster_log > ${cluster_id}_draft.log
-    echo -n \$ID >> ${cluster_id}_draft.log
-    """
+  DRAFT=\$(awk 'NR>1{name[\$1]=\$1; arr[\$1]+= \$3; count[\$1]+=1} END{for (a in arr) {print arr[a]/count[a], name[a]}}' fastani_output.ani | sort -rg | cut -d " " -f2 | head -n1)
+  cat "\$DRAFT" > draft_read.fasta
+  ID=\$(head -n1 draft_read.fasta | sed 's/>//g')
+
+  tr -d '\\n' < "${cluster_log}" > ${cluster_id}_draft.log
+  echo -n ";\$ID" >> ${cluster_id}_draft.log
+  echo >> ${cluster_id}_draft.log
+  """
+
+
 }
-
 
 process racon_pass {
   input:
@@ -436,7 +481,7 @@ process medaka_pass {
   errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
   maxRetries 3
 
-  publishDir "${params.outdir}/${barcode}/cluster${cluster_id}", mode: 'copy', pattern: 'consensus_medaka.fasta/consensus.fasta'
+  publishDir { "${params.outdir}/${barcode}/cluster${cluster_id}" }, mode: 'copy', pattern: 'consensus_medaka.fasta/consensus.fasta'
 
   input:
     tuple val(barcode), val(cluster_id), path(cluster_log), path(draft), path(corrected_reads), val(success)
@@ -481,7 +526,6 @@ process export_consensus_fastas {
     """
 }
 
-
 process consensus_classification {
   publishDir { "${params.outdir}/${barcode}/cluster${cluster_id}" }, mode: 'copy', pattern: 'consensus_classification.csv'
   time { 48.hour * task.attempt }
@@ -498,16 +542,17 @@ process consensus_classification {
   script:
     db    = params.db
     taxdb = params.tax
+    blast_task = params.blast_task
     """
     export BLASTDB="\${BLASTDB:+\$BLASTDB:}$taxdb"
-    blastn -query $consensus -db $db -task blastn -num_threads ${task.cpus} -dust no -outfmt  "10 sscinames staxids sacc evalue length qcovs pident" -evalue 1e-20 -max_hsps 50 -max_target_seqs 50 | sed 's/;/_/g' | sed 's/,/;/g' | sed 's/_/,/g'  > consensus_classification.csv
-    cat $cluster_log > ${cluster_id}_blast.log
+    blastn -query $consensus -db $db -task $blast_task -num_threads ${task.cpus} -dust no -outfmt  "10 sscinames staxids sacc evalue length qcovs pident" -evalue 1e-20 -max_hsps 20 -max_target_seqs 20 | sed 's/;/_/g' | sed 's/,/;/g' | sed 's/_/,/g'  > consensus_classification.csv
+    
+    tr -d '\n' < "$cluster_log" > ${cluster_id}_blast.log
     echo -n ";" >> ${cluster_id}_blast.log
-    BLAST_OUT=\$(cut -d";" -f1,2,3,4,5,6,7 consensus_classification.csv | head -n1)
-    echo \$BLAST_OUT >> ${cluster_id}_blast.log
+    BLAST_OUT=\$(cut -d";" -f1,2,3,4,5,6,7 consensus_classification.csv | sed -n '1p')
+    echo "\$BLAST_OUT" >> ${cluster_id}_blast.log
     """
 }
-
 
 process join_results {
   publishDir { "${params.outdir}/${barcode}" }, mode: 'copy'
