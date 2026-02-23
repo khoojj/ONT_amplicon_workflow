@@ -81,6 +81,16 @@ nextflow run main.nf -profile conda \
   --polishing_reads 300
 ```
 
+### Select blast method (default: blastn)
+
+```bash
+nextflow run main.nf -profile conda \
+  --reads "*.fq.gz" \
+  --blast_task megablast \
+  --db /path/to/blast_db/nt \
+  --tax /path/to/blastdb_taxonomy_dir
+```
+
 ### Running the Pipeline at Scale
 For large datasets (e.g., >50 samples), the Nextflow manager requires additional memory to track parallel tasks. It is highly recommended to set the Java Virtual Machine (JVM) overhead before launching the pipeline:
 
