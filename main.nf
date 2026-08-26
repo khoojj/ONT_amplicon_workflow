@@ -88,8 +88,18 @@ workflow {
 
 // Trim with cutadapt first
 t = cutadapt_trim(reads_ch)
+
+// Remove samples with no reads remaining after trimming
+trimmed_nonempty = t.trimmed_reads.filter { reads ->
+    if (reads.size() == 0) {
+        log.warn "Skipping ${reads.name}: no reads remained after cutadapt trimming"
+        return false
+    }
+    return true
+}
+
 // Compute kmer frequency
-  k = kmer_freqs(t.trimmed_reads)
+  k = kmer_freqs(trimmed_nonempty)
 // Perform UMAP clustering
   c = read_clustering(k.freqs, k.freqs_qc_results)
 // Split the cluster into separate work directories
