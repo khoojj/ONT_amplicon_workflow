@@ -296,6 +296,9 @@ process cutadapt_trim {
 
 
 process kmer_freqs {
+
+  tag { reads.name }
+
   input:
     path reads
   
@@ -316,7 +319,8 @@ process kmer_freqs {
 
 process read_clustering {
   time { 48.hour * task.attempt }
-  errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
+  tag "${barcode}"
+  errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'ignore' }
   maxRetries 3
 
   publishDir "${params.outdir}/${barcode}/", mode: 'copy', pattern: 'hdbscan.output.*'
@@ -335,6 +339,8 @@ process read_clustering {
 
 //Updated to handle negative samples or low read samples
 process split_by_cluster {
+  tag "${barcode}"
+
   input:
     tuple val(barcode), path(clusters), path(reads)
 
@@ -384,7 +390,7 @@ process bundle_cluster_inputs {
 
 process read_correction {
   memory { 7.GB * task.attempt }
-  time { 48.hour * task.attempt }
+  tag "${barcode}:cluster${cluster_id}"
   errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
   maxRetries 3
 
@@ -436,6 +442,8 @@ process read_correction {
 
 
 process draft_selection {
+  tag "${barcode}:cluster${cluster_id}"
+
   publishDir { "${params.outdir}/${barcode}/cluster${cluster_id}" }, mode: 'copy', pattern: 'draft_read.fasta' 
   errorStrategy 'retry'
 
@@ -465,6 +473,8 @@ script:
 }
 
 process racon_pass {
+  tag "${barcode}:cluster${cluster_id}"
+
   input:
     tuple val(barcode), val(cluster_id), path(cluster_log), path(draft_read), path(corrected_reads)
 
@@ -488,7 +498,8 @@ process racon_pass {
 process medaka_pass {
   memory { 7.GB * task.attempt }
   time { 48.hour * task.attempt }
-  errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
+  tag "${barcode}:cluster${cluster_id}"
+  errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'ignore' }
   maxRetries 3
 
   publishDir { "${params.outdir}/${barcode}/cluster${cluster_id}" }, mode: 'copy', pattern: 'consensus_medaka.fasta/consensus.fasta'
@@ -508,6 +519,8 @@ process medaka_pass {
     if medaka_consensus -i $corrected_reads -d $draft -o consensus_medaka.fasta -t ${task.cpus} -m r1041_e82_400bps_hac_v4.2.0 ; then
         echo "Command succeeded"
     else
+        echo "Medaka failed for ${barcode}:cluster${cluster_id}; draft used as consensus" \
+    > medaka_warning.log
         mkdir -p consensus_medaka.fasta
         cat $draft > consensus_medaka.fasta/consensus.fasta
     fi
@@ -537,6 +550,7 @@ process export_consensus_fastas {
 }
 
 process consensus_classification {
+  tag "${barcode}:cluster${cluster_id}"
   publishDir { "${params.outdir}/${barcode}/cluster${cluster_id}" }, mode: 'copy', pattern: 'consensus_classification.csv'
   time { 48.hour * task.attempt }
   errorStrategy { return 'ignore' }
@@ -566,6 +580,7 @@ process consensus_classification {
 
 process join_results {
   publishDir { "${params.outdir}/${barcode}" }, mode: 'copy'
+
 
   input:
     tuple val(barcode), path(logs)
